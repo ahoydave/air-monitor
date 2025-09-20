@@ -31,6 +31,7 @@
  * 4. "Sensirion I2C SCD4x" by Sensirion
  * 5. "Adafruit SGP30 Sensor" by Adafruit
  * 6. "Sensirion I2C Sps30" by Sensirion
+ * 7. "ArduinoJson" by Benoit Blanchon
  * ******************************************************************************/
 
 #include <Wire.h>
@@ -40,6 +41,12 @@
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+
+#include "config.h"
 
 // OLED Display settings
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
@@ -78,9 +85,14 @@ uint16_t nc4p0 = 0;
 uint16_t nc10p0 = 0;
 uint16_t typicalParticleSize = 0;
 
-// Timer for non-blocking readings
+// Timer for non-blocking readings and uploads
 unsigned long lastReadingTime = 0;
-const long readingInterval = 2000; // Read sensors every 2 seconds
+unsigned long lastUploadTime = 0;
+const long displayInterval = 2000; // Update display every 2 seconds
+
+// WiFi and HTTP status
+bool wifiConnected = false;
+HTTPClient http;
 
 void setup() {
   Serial.begin(115200);
@@ -130,11 +142,38 @@ void setup() {
   sps30.readProductType(productType, 8);
   sps30.startMeasurement((SPS30OutputFormat)(1280));
 
+  // --- Initialize WiFi ---
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  
+  unsigned long wifiStart = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < WIFI_TIMEOUT_MS) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnected = true;
+    Serial.println("");
+    Serial.println("WiFi connected!");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+    displayMessage("WiFi Connected!\n" + WiFi.localIP().toString());
+    delay(2000);
+  } else {
+    Serial.println("");
+    Serial.println("WiFi connection failed!");
+    displayMessage("WiFi Failed!\nContinuing offline");
+    delay(2000);
+  }
+
   lastReadingTime = millis();
+  lastUploadTime = millis();
 }
 
 void loop() {
-  if (millis() - lastReadingTime > readingInterval) {
+  // Update sensor readings and display every 2 seconds
+  if (millis() - lastReadingTime > displayInterval) {
     lastReadingTime = millis();
 
     readSCD41();
@@ -143,6 +182,17 @@ void loop() {
 
     printToSerial();
     updateDisplay();
+  }
+
+  // Upload data every 5 minutes (or configured interval)
+  if (wifiConnected && millis() - lastUploadTime > READING_INTERVAL_MS) {
+    lastUploadTime = millis();
+    uploadSensorData();
+  }
+
+  // Check WiFi connection periodically
+  if (millis() % 30000 == 0) { // Every 30 seconds
+    checkWiFiConnection();
   }
 }
 
@@ -291,7 +341,7 @@ void updateDisplay() {
   display.display();
 }
 
-// Helper function to display a message and halt
+// Helper function to display a message
 void displayMessage(String msg) {
   display.clearDisplay();
   display.setTextSize(1);
@@ -299,4 +349,86 @@ void displayMessage(String msg) {
   display.setCursor(0, 0);
   display.println(msg);
   display.display();
+}
+
+void checkWiFiConnection() {
+  if (WiFi.status() != WL_CONNECTED) {
+    wifiConnected = false;
+    Serial.println("WiFi disconnected. Attempting to reconnect...");
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    
+    unsigned long reconnectStart = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - reconnectStart < 5000) {
+      delay(500);
+      Serial.print(".");
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiConnected = true;
+      Serial.println("\nWiFi reconnected!");
+    } else {
+      Serial.println("\nWiFi reconnection failed.");
+    }
+  }
+}
+
+void uploadSensorData() {
+  if (!wifiConnected) {
+    Serial.println("WiFi not connected. Skipping upload.");
+    return;
+  }
+
+  Serial.println("Uploading sensor data...");
+  
+  // Create JSON payload
+  DynamicJsonDocument doc(1024);
+  doc["deviceId"] = DEVICE_ID;
+  doc["temperature"] = temperature;
+  doc["humidity"] = humidity;
+  doc["co2"] = co2;
+  doc["tvoc"] = tvoc;
+  doc["eco2"] = eco2;
+  doc["mc1p0"] = mc1p0;
+  doc["mc2p5"] = mc2p5;
+  doc["mc4p0"] = mc4p0;
+  doc["mc10p0"] = mc10p0;
+  doc["nc0p5"] = nc0p5;
+  doc["nc1p0"] = nc1p0;
+  doc["nc2p5"] = nc2p5;
+  doc["nc4p0"] = nc4p0;
+  doc["nc10p0"] = nc10p0;
+  doc["typicalParticleSize"] = typicalParticleSize;
+
+  String jsonString;
+  serializeJson(doc, jsonString);
+
+  // Send HTTP POST request
+  http.begin(API_ENDPOINT);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("x-api-key", API_KEY);
+  http.setTimeout(HTTP_TIMEOUT_MS);
+
+  int httpResponseCode = http.POST(jsonString);
+
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+    Serial.println("Upload successful!");
+    Serial.print("Response code: ");
+    Serial.println(httpResponseCode);
+    Serial.print("Response: ");
+    Serial.println(response);
+    
+    // Show success on display briefly
+    displayMessage("Upload OK!\nCode: " + String(httpResponseCode));
+    delay(1000);
+  } else {
+    Serial.print("Upload failed. Error code: ");
+    Serial.println(httpResponseCode);
+    
+    // Show error on display briefly
+    displayMessage("Upload Failed!\nError: " + String(httpResponseCode));
+    delay(1000);
+  }
+
+  http.end();
 }

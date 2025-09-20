@@ -19,34 +19,43 @@ Updates the Lambda function with latest code changes:
 - Waits for update completion
 - Shows updated function info
 
-### `./status.sh`
-Shows current deployment status and resource information including API endpoint URLs.
+### `./test-api.sh`
+Tests API security and functionality:
+- Tests API without key (should fail with 403)
+- Tests API with valid key (should succeed with 200)
+- Verifies data is stored in DynamoDB
+- Cleans up test data automatically
 
-### `./cleanup.sh`
-**⚠️ DESTRUCTIVE**: Removes all air monitor resources from AWS. Use with caution!
+## Configuration
+
+1. **Copy config template**: `cp config.example.sh config.sh`
+2. **Edit `config.sh`** with your actual API keys and settings
+3. **The `config.sh` file is git-ignored** to keep secrets safe
 
 ## API Endpoints
 
-After deployment, you'll have:
-- `POST /readings` - Submit sensor data
-- `GET /readings` - Retrieve last 24 hours of data
+- `POST /readings` - Submit sensor data (requires API key)
+- **Endpoint**: `https://7xi039s0l2.execute-api.us-east-1.amazonaws.com/prod/readings`
+- **Authentication**: API key via `x-api-key` header
 
 ## Usage
 
-1. **Deploy**: `./deploy.sh`
-2. **Check status**: `./status.sh`
-3. **Test the API**: Use the URLs from status output
-4. **Clean up**: `./cleanup.sh` (when done)
+1. **Test the API**: `./test-api.sh`
+2. **Update Lambda**: `./update-lambda.sh`
+3. **See Infrastructure.md** for detailed setup instructions
 
 ## Data Format
 
-Send JSON data to the POST endpoint:
+Send JSON data with device ID and sensor readings:
 ```json
 {
+  "deviceId": "air-monitor-01",
   "temperature": 23.5,
   "humidity": 65.2,
+  "co2": 450,
+  "tvoc": 125,
   "pm25": 12.1
 }
 ```
 
-All key-value pairs become separate measurements in Timestream with device ID `air-monitor-01`.
+All sensor readings are stored in DynamoDB with timestamp and device ID.

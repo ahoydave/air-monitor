@@ -20,19 +20,20 @@ cd /Users/david.jacka/personal-repos/air-monitor/service
 
 # Install/update dependencies
 echo "📦 Installing dependencies..."
-npm install --production
+npm install --production --silent
 
 # Create new deployment package
 echo "📦 Creating deployment package..."
 rm -f lambda-ingest.zip
-zip -r lambda-ingest.zip ingest.js package.json node_modules/
+zip -rq lambda-ingest.zip ingest.js package.json node_modules/
 
 # Update Lambda function code
 echo "🚀 Updating Lambda function..."
 aws lambda update-function-code \
     --function-name ${FUNCTION_NAME} \
     --zip-file fileb://lambda-ingest.zip \
-    --region ${REGION}
+    --region ${REGION} \
+    --output text > /dev/null
 
 # Wait for update to complete
 echo "⏳ Waiting for update to complete..."

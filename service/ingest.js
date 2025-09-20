@@ -13,12 +13,14 @@ module.exports.handler = async (event) => {
     const data = JSON.parse(event.body);
     const currentTime = Date.now();
 
-    // For now, we'll hardcode a device ID.
-    // In the future, this could be passed in the request or extracted from headers/path
-    const deviceId = 'air-monitor-01';
+    // Extract deviceId from request body or use default
+    const deviceId = data.deviceId || 'air-monitor-01';
+    
+    // Remove deviceId from sensor data if it exists
+    const { deviceId: _, ...sensorData } = data;
 
     // Validate that we have some sensor data
-    if (!data || Object.keys(data).length === 0) {
+    if (!sensorData || Object.keys(sensorData).length === 0) {
       return {
         statusCode: 400,
         body: JSON.stringify({ message: "No sensor data provided." }),
@@ -29,7 +31,7 @@ module.exports.handler = async (event) => {
     const item = {
       deviceId: deviceId,
       timestamp: currentTime,
-      ...data // Spread all sensor readings (temperature, humidity, pm25, etc.)
+      ...sensorData // Spread all sensor readings (temperature, humidity, pm25, etc.)
     };
 
     const params = {

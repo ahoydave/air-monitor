@@ -100,3 +100,7 @@ Thumbs.db
 
 # Arduino IDE files (for the ESP32 code)
 *.ino.bak
+
+# Configuration files with secrets
+air_monitor/config.h
+service/config.sh
