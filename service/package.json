@@ -1,0 +1,9 @@
+{
+  "name": "air-monitor-api",
+  "version": "1.0.0",
+  "description": "Serverless API for the air monitor project",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.592.0",
+    "@aws-sdk/lib-dynamodb": "^3.592.0"
+  }
+}
