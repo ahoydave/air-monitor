@@ -6,7 +6,6 @@ yarn-error.log*
 
 # Lambda deployment packages
 *.zip
-lambda-*.zip
 
 # Environment variables
 .env
