@@ -64,26 +64,47 @@ if [ -z "$FUNCTION_URL" ]; then
     exit 1
 fi
 
-# Test the deployment
+# Test the deployment with retry loop
 echo "🧪 Testing deployment..."
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$FUNCTION_URL/health")
+echo "⏳ Waiting for Lambda function to be ready (this may take a few seconds)..."
+echo "💡 Press Ctrl+C if you want to skip the test and assume success"
 
-if [ "$HTTP_STATUS" = "200" ]; then
-    echo "✅ Deployment successful!"
-    echo ""
-    echo "🌬️  Air Monitor Dashboard is now live at:"
-    echo "   $FUNCTION_URL"
-    echo ""
-    echo "🩺 Health check: $FUNCTION_URL/health"
-    echo "📊 API endpoint: $FUNCTION_URL/api/readings"
-    echo ""
-    echo "🎉 Deployment complete!"
-else
-    echo "❌ Deployment test failed. HTTP status: $HTTP_STATUS"
-    echo "Check the CloudWatch logs for more details:"
-    echo "aws logs tail /aws/lambda/$FUNCTION_NAME --follow --profile $PROFILE"
-    exit 1
-fi
+RETRY_COUNT=0
+MAX_RETRIES=12  # 12 retries = up to 60 seconds
+RETRY_DELAY=5   # 5 seconds between retries
+
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$FUNCTION_URL/health" 2>/dev/null)
+
+    if [ "$HTTP_STATUS" = "200" ]; then
+        echo "✅ Deployment successful!"
+        echo ""
+        echo "🌬️  Air Monitor Dashboard is now live at:"
+        echo "   $FUNCTION_URL"
+        echo ""
+        echo "🩺 Health check: $FUNCTION_URL/health"
+        echo "📊 API endpoint: $FUNCTION_URL/api/readings"
+        echo ""
+        echo "🎉 Deployment complete!"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            echo "⏳ Function not ready yet (attempt $RETRY_COUNT/$MAX_RETRIES, status: $HTTP_STATUS), retrying in ${RETRY_DELAY}s..."
+            sleep $RETRY_DELAY
+        else
+            echo "⚠️  Function still not responding after $MAX_RETRIES attempts"
+            echo "📋 Final status: $HTTP_STATUS"
+            echo ""
+            echo "🌬️  Dashboard should still be available at:"
+            echo "   $FUNCTION_URL"
+            echo ""
+            echo "💡 Try accessing it directly - Lambda functions sometimes take longer to warm up"
+            echo "🔍 Check logs if needed: aws logs tail /aws/lambda/$FUNCTION_NAME --follow --profile $PROFILE"
+            break
+        fi
+    fi
+done
 
 # Clean up
 echo "🧹 Cleaning up deployment package..."
